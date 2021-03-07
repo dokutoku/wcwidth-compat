@@ -1,0 +1,576 @@
+name: Create Release
+
+on:
+    # Note that this will not work correctly for commits that are not tags.
+    push:
+        tags:
+        - 'v*.*.*'
+
+jobs:
+    Windows:
+        runs-on: windows-2016
+
+        strategy:
+            matrix:
+                dub-arch: [x86, x86_64]
+                build-type: [release-nobounds]
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            $current_time = php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');"
+            echo $current_time;
+            echo "::set-output name=start-time::$current_time";
+
+        - name: set-asset_base_name
+          id: init-asset-name
+          run: |
+            $project_name = $env:GITHUB_REPOSITORY -replace "^[^/]+/", "";
+            $release_version = $env:GITHUB_REF -replace "refs/tags/v", "";
+            echo "::set-output name=asset_base_name::$project_name-$release_version-windows-${{ matrix.dub-arch }}";
+            echo "::set-output name=asset_base_name-x86::$project_name-$release_version-windows-x86";
+            echo "::set-output name=asset_base_name-x86_64::$project_name-$release_version-windows-x86_64";
+
+        - name: Init get-dlang
+          run: |
+            mkdir ~/get-dlang;
+            cd ~/get-dlang;
+            git init;
+            git remote add origin https://gitlab.com/dokutoku/get-dlang.git;
+            git config --local core.sparsecheckout true;
+            git config --local core.autocrlf false;
+
+        - name: Fetch get-dlang
+          run: |
+            cd ~/get-dlang;
+            echo '/ldc2-version.txt' >> .git/info/sparse-checkout;
+            echo '/template/powershell/install-ldc2.ps1' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/template/powershell/install-ldc2.ps1.sig' >> .git/info/sparse-checkout;
+            git fetch --depth=1 origin master;
+
+        - name: Reset get-dlang
+          run: |
+            cd ~/get-dlang;
+            git reset --hard origin/master;
+
+        - name: log get-dlang
+          run: |
+            cd ~/get-dlang;
+            git log -1;
+
+        - name: Show get-dlang hashes
+          run: |
+            cd ~/get-dlang;
+            (Get-ChildItem -Recurse -File).FullName | ForEach-Object { openssl sha512 $_;}
+
+        - name: Verify get-dlang files
+          run: |
+            cd ~/get-dlang;
+            Write-Output "-----BEGIN PUBLIC KEY-----`nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Mgmj1IMcTe4ZD0nH5Hj`nHTHdcj2S9I8eIpSYl0DdPGzQcLN06eOX+n4MhOo886NQTfBATVAjyGZy500/8JT3`n7wk/we8yRcxAzW18GjUtqiLW8nvSK7tsqPAO8AWJNldYKwM3xTNo0hZW3G5xlkSw`n0ixMlHTffQ2JxPv4xDgBlKUAndzGIPHGhPiPnPbOOS5tOYaWLk3wtXERJpnv4chx`nCNgJc+uY2RTZWQDLCfjJAi4kce+8lkxaIHHSUrRRtjHdTTvPVCg9EWaX53u8MAFf`nf2S9+6+CdrvKe3+IOppI5cfFZtw4rLWqhrg5tVI7JLIVjx2ioZ5cvR6tzNKKGJcw`nD71vrqGWY6BuGRCaVOGAL/grmw3p4EPGPyxmDCsAsWztdWx9EyHNKtI8zfCFEWBx`noGDHjMYUEtF+acVJAhAb7dqgQ8RTebIuQipxlpSLC7BZMHm72SE2TqixIWLSsgAJ`n7NMv0PhReU+payF+3JsKgZRXkIaD/hgdh/Lz2Cr5iEOKAes1Rh2j6Wx9BYrY7Sbi`ncOfOXduCKQ04siLr1JGt8ZdsmCRhM7GavgtF+WsZav1kCHotVDsVJD1VOQOIdxMQ`n1i2AFC69JTIl395UtO4MaKxNO8lbTF9lefOjp80q+HailSbkJpOvrRBG1S3k5PmE`n3d9rSpiJtcLimKRfGrdYh68CAwEAAQ==`n-----END PUBLIC KEY-----" | Out-File public.pem -Encoding ascii;
+            (Get-ChildItem -Recurse -File -include *.ps1,*.sh,*.conf,*.yml,*.txt).FullName | ForEach-Object { openssl dgst -sha512 -verify public.pem -signature $_'.sig' $_; }
+
+        - name: Dlang versions
+          id: dlang-versions
+          run: |
+            cd ~/;
+            echo "::set-output name=dlang_versions::$(php -r "echo trim(file_get_contents('./get-dlang/ldc2-version.txt'));")";
+
+        - name: installer-cache
+          uses: actions/cache@v2
+          with:
+              path: |
+                C:\cache
+
+              key: |
+                windows-dlang-${{ steps.dlang-versions.outputs.dlang_versions }}
+
+        - name: Install ldc2
+          run: |
+            cd ~/;
+            Powershell -ExecutionPolicy Bypass -File get-dlang/template/powershell/install-ldc2.ps1;
+
+        - name: Show ldc2 versions
+          run: |
+            C:\ldc2\bin\ldc2.exe --version
+            C:\ldc2\bin\dub.exe --version
+
+        - name: checkout
+          uses: actions/checkout@v2
+
+        - name: x86 create .bat
+          if: ${{ (matrix.dub-arch == 'x86') || (matrix.dub-arch == 'x86_mscoff') }}
+          shell: cmd
+          run: |
+            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars32.bat" > vc_init.bat
+
+        - name: x64 create .bat
+          if: ${{ (matrix.dub-arch != 'x86') && (matrix.dub-arch != 'x86_mscoff') }}
+          shell: cmd
+          run: |
+            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat" > vc_init.bat
+
+        - name: ldc2 build
+          shell: cmd
+          run: |
+            call vc_init.bat && C:\ldc2\bin\dub.exe build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=C:\ldc2\bin\ldc2.exe
+
+        - name: Create Windows archive
+          run: |
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name }};
+            mkdir '${{ steps.init-asset-name.outputs.asset_base_name }}\include';
+            mkdir '${{ steps.init-asset-name.outputs.asset_base_name }}\lib';
+            robocopy /e /s 'include\' '${{ steps.init-asset-name.outputs.asset_base_name }}\include\';
+            robocopy /e /s 'lib\' '${{ steps.init-asset-name.outputs.asset_base_name }}\lib\';
+            cp 'LICENSE.txt' '${{ steps.init-asset-name.outputs.asset_base_name }}\';
+            cp 'README.md' '${{ steps.init-asset-name.outputs.asset_base_name }}\';
+            7z a '${{ steps.init-asset-name.outputs.asset_base_name }}.zip' ${{ steps.init-asset-name.outputs.asset_base_name }};
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v2
+          with:
+              path: |
+                ${{ steps.init-asset-name.outputs.asset_base_name }}.zip
+
+        outputs:
+            asset_name-x86: ${{ steps.init-asset-name.outputs.asset_base_name-x86 }}.zip
+            asset_name-x86_64: ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}.zip
+
+    MacOS:
+        runs-on: macos-10.15
+
+        strategy:
+            matrix:
+                build-type: [release-nobounds]
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            current_time=`php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');"`;
+            echo $current_time;
+            echo "::set-output name=start-time::$current_time";
+
+        - name: set-asset_base_name
+          id: init-asset-name
+          run: |
+            echo "::set-output name=asset_base_name::${GITHUB_REPOSITORY#*/}-${GITHUB_REF#refs/tags/v}-osx-x86_64";
+            echo "::set-output name=asset_base_name-x86_64::${GITHUB_REPOSITORY#*/}-${GITHUB_REF#refs/tags/v}-osx-x86_64";
+
+        - name: Init get-dlang
+          run: |
+            mkdir ~/get-dlang;
+            cd ~/get-dlang;
+            git init;
+            git remote add origin https://gitlab.com/dokutoku/get-dlang.git;
+            git config --local core.sparsecheckout true;
+            git config --local core.autocrlf false;
+
+        - name: Fetch get-dlang
+          run: |
+            cd ~/get-dlang;
+            echo '/ldc2-version.txt' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-osx-x86_64.sh' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-osx-x86_64.sh.sig' >> .git/info/sparse-checkout;
+            git fetch --depth=1 origin master;
+
+        - name: Reset get-dlang
+          run: |
+            cd ~/get-dlang;
+            git reset --hard origin/master;
+
+        - name: log get-dlang
+          run: |
+            cd ~/get-dlang;
+            git log -1;
+
+        - name: Show get-dlang hashes
+          run: |
+            cd ~/get-dlang;
+            find './' -type f | grep --regexp=^\.//\.git/ --invert-match | xargs openssl sha512;
+
+        - name: Verify get-dlang files
+          run: |
+            cd ~/get-dlang;
+            echo -e "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Mgmj1IMcTe4ZD0nH5Hj\nHTHdcj2S9I8eIpSYl0DdPGzQcLN06eOX+n4MhOo886NQTfBATVAjyGZy500/8JT3\n7wk/we8yRcxAzW18GjUtqiLW8nvSK7tsqPAO8AWJNldYKwM3xTNo0hZW3G5xlkSw\n0ixMlHTffQ2JxPv4xDgBlKUAndzGIPHGhPiPnPbOOS5tOYaWLk3wtXERJpnv4chx\nCNgJc+uY2RTZWQDLCfjJAi4kce+8lkxaIHHSUrRRtjHdTTvPVCg9EWaX53u8MAFf\nf2S9+6+CdrvKe3+IOppI5cfFZtw4rLWqhrg5tVI7JLIVjx2ioZ5cvR6tzNKKGJcw\nD71vrqGWY6BuGRCaVOGAL/grmw3p4EPGPyxmDCsAsWztdWx9EyHNKtI8zfCFEWBx\noGDHjMYUEtF+acVJAhAb7dqgQ8RTebIuQipxlpSLC7BZMHm72SE2TqixIWLSsgAJ\n7NMv0PhReU+payF+3JsKgZRXkIaD/hgdh/Lz2Cr5iEOKAes1Rh2j6Wx9BYrY7Sbi\ncOfOXduCKQ04siLr1JGt8ZdsmCRhM7GavgtF+WsZav1kCHotVDsVJD1VOQOIdxMQ\n1i2AFC69JTIl395UtO4MaKxNO8lbTF9lefOjp80q+HailSbkJpOvrRBG1S3k5PmE\n3d9rSpiJtcLimKRfGrdYh68CAwEAAQ==\n-----END PUBLIC KEY-----" > public.pem;
+            find './' -type f | grep -E "\.(ps1|sh|conf|yml|txt)$" | xargs -I {} openssl dgst -sha512 -verify public.pem -signature {}.sig {};
+
+        - name: Dlang versions
+          id: dlang-versions
+          run: |
+            cd ~/;
+            echo "::set-output name=dlang_versions::$(php -r "echo trim(file_get_contents('./get-dlang/ldc2-version.txt'));")";
+
+        - name: installer-cache
+          uses: actions/cache@v2
+          with:
+              path: |
+                ~/cache
+
+              key: |
+                osx-dlang-${{ steps.dlang-versions.outputs.dlang_versions }}
+
+        - name: Download ldc2
+          run: |
+            cd ~/;
+            sh ~/get-dlang/template/shell/get-ldc2/get-ldc2-osx-x86_64.sh;
+
+        - name: Show ldc2 version
+          run: |
+            /Users/runner/ldc2/bin/ldc2 --version;
+            /Users/runner/ldc2/bin/dub --version;
+
+        - name: checkout
+          uses: actions/checkout@v2
+
+        - name: ldc2 build
+          run: |
+            /Users/runner/ldc2/bin/dub build --force --combined --arch=x86_64 --build=${{ matrix.build-type }} --compiler=/Users/runner/ldc2/bin/ldc2;
+
+        - name: Create OSX archive
+          run: |
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name }};
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name }}/bin;
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name }}/include;
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name }}/lib;
+            cp -r ./include/* '${{ steps.init-asset-name.outputs.asset_base_name }}/include/';
+            cp -r ./lib/* '${{ steps.init-asset-name.outputs.asset_base_name }}/lib/';
+            cp './LICENSE.txt' '${{ steps.init-asset-name.outputs.asset_base_name }}/';
+            cp './README.md' '${{ steps.init-asset-name.outputs.asset_base_name }}/';
+            tar zcvf '${{ steps.init-asset-name.outputs.asset_base_name }}.tar.gz' '${{ steps.init-asset-name.outputs.asset_base_name }}/';
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v2
+          with:
+              path: |
+                ${{ steps.init-asset-name.outputs.asset_base_name }}.tar.gz
+
+        outputs:
+            asset_name-x86_64: ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}.tar.gz
+
+    Other_Platforms:
+        runs-on: ubuntu-20.04
+
+        strategy:
+            matrix:
+                dub-arch: [x86_64, wasm32-unknown-unknown-webassembly]
+                build-type: [release-nobounds]
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            current_time=`php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');"`;
+            echo $current_time;
+            echo "::set-output name=start-time::$current_time";
+
+        - name: set-asset_base_name
+          id: init-asset-name
+          run: |
+            echo "::set-output name=asset_base_name-x86_64::${GITHUB_REPOSITORY#*/}-${GITHUB_REF#refs/tags/v}-linux-x86_64";
+            echo "::set-output name=asset_base_name-wasm::${GITHUB_REPOSITORY#*/}-${GITHUB_REF#refs/tags/v}-wasm";
+
+        - name: Init get-dlang
+          run: |
+            mkdir ~/get-dlang;
+            cd ~/get-dlang;
+            git init;
+            git remote add origin https://gitlab.com/dokutoku/get-dlang.git;
+            git config --local core.sparsecheckout true;
+            git config --local core.autocrlf false;
+
+        - name: Fetch get-dlang
+          run: |
+            cd ~/get-dlang;
+            echo '/ldc2-version.txt' >> .git/info/sparse-checkout;
+            echo '/template/ldc2-conf/ldc2-linux-x86_64.conf' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-linux-x86_64.sh' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/template/ldc2-conf/ldc2-linux-x86_64.conf.sig' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-linux-x86_64.sh.sig' >> .git/info/sparse-checkout;
+            git fetch --depth=1 origin master;
+
+        - name: Reset get-dlang
+          run: |
+            cd ~/get-dlang;
+            git reset --hard origin/master;
+
+        - name: log get-dlang
+          run: |
+            cd ~/get-dlang;
+            git log -1;
+
+        - name: Show get-dlang hashes
+          run: |
+            cd ~/get-dlang;
+            find './' -type f | grep --regexp=^\./\.git/ --invert-match | xargs sha512sum;
+
+        - name: Verify get-dlang files
+          run: |
+            cd ~/get-dlang;
+            echo -e "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Mgmj1IMcTe4ZD0nH5Hj\nHTHdcj2S9I8eIpSYl0DdPGzQcLN06eOX+n4MhOo886NQTfBATVAjyGZy500/8JT3\n7wk/we8yRcxAzW18GjUtqiLW8nvSK7tsqPAO8AWJNldYKwM3xTNo0hZW3G5xlkSw\n0ixMlHTffQ2JxPv4xDgBlKUAndzGIPHGhPiPnPbOOS5tOYaWLk3wtXERJpnv4chx\nCNgJc+uY2RTZWQDLCfjJAi4kce+8lkxaIHHSUrRRtjHdTTvPVCg9EWaX53u8MAFf\nf2S9+6+CdrvKe3+IOppI5cfFZtw4rLWqhrg5tVI7JLIVjx2ioZ5cvR6tzNKKGJcw\nD71vrqGWY6BuGRCaVOGAL/grmw3p4EPGPyxmDCsAsWztdWx9EyHNKtI8zfCFEWBx\noGDHjMYUEtF+acVJAhAb7dqgQ8RTebIuQipxlpSLC7BZMHm72SE2TqixIWLSsgAJ\n7NMv0PhReU+payF+3JsKgZRXkIaD/hgdh/Lz2Cr5iEOKAes1Rh2j6Wx9BYrY7Sbi\ncOfOXduCKQ04siLr1JGt8ZdsmCRhM7GavgtF+WsZav1kCHotVDsVJD1VOQOIdxMQ\n1i2AFC69JTIl395UtO4MaKxNO8lbTF9lefOjp80q+HailSbkJpOvrRBG1S3k5PmE\n3d9rSpiJtcLimKRfGrdYh68CAwEAAQ==\n-----END PUBLIC KEY-----" > public.pem;
+            find './' -type f | grep -E "\.(ps1|sh|conf|yml|txt)$" | xargs -I {} openssl dgst -sha512 -verify public.pem -signature {}.sig {};
+
+        - name: Dlang versions
+          id: dlang-versions
+          run: |
+            cd ~/;
+            echo "::set-output name=dlang_versions::$(php -r "echo trim(file_get_contents('./get-dlang/ldc2-version.txt'));")";
+
+        - name: installer-cache
+          uses: actions/cache@v2
+          with:
+              path: |
+                ~/cache
+
+              key: |
+                other-platforms-dlang-${{ steps.dlang-versions.outputs.dlang_versions }}
+
+        - name: Download ldc2
+          run: |
+            cd ~/;
+            sh ~/get-dlang/template/shell/get-ldc2/get-ldc2-linux-x86_64.sh;
+
+        - name: copy ldc2.conf
+          run: |
+            cp ~/get-dlang/template/ldc2-conf/ldc2-linux-x86_64.conf ~/ldc2/etc/ldc2.conf;
+
+        - name: Show ldc2 version
+          run: |
+            /home/runner/ldc2/bin/ldc2 --version;
+            /home/runner/ldc2/bin/dub --version;
+
+        - name: checkout
+          uses: actions/checkout@v2
+
+        - name: ldc2 build
+          run: |
+            /home/runner/ldc2/bin/dub build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=/home/runner/ldc2/bin/ldc2;
+
+        - name: Create Linux x86_64 archive
+          if: ${{ (matrix.dub-arch == 'x86_64') }}
+          run: |
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }};
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/bin;
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/include;
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/lib;
+            cp -r ./include/* '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/include/';
+            cp -r ./lib/* '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/lib/';
+            cp './LICENSE.txt' '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/';
+            cp './README.md' '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/';
+            tar zcvf '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}.tar.gz' '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/';
+
+        - name: Create wasm archive
+          if: ${{ (matrix.dub-arch == 'wasm32-unknown-unknown-webassembly') }}
+          run: |
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-wasm }};
+            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-wasm }}/wasm;
+            cp -r ./wasm/* '${{ steps.init-asset-name.outputs.asset_base_name-wasm }}/wasm/';
+            cp './LICENSE.txt' '${{ steps.init-asset-name.outputs.asset_base_name-wasm }}/';
+            cp './README.md' '${{ steps.init-asset-name.outputs.asset_base_name-wasm }}/';
+            zip -r -ll -9 -v '${{ steps.init-asset-name.outputs.asset_base_name-wasm }}.zip' '${{ steps.init-asset-name.outputs.asset_base_name-wasm }}/';
+
+        - name: Upload artifact
+          if: ${{ (matrix.dub-arch == 'x86_64') }}
+          uses: actions/upload-artifact@v2
+          with:
+              path: |
+                ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}.tar.gz
+
+        - name: Upload artifact wasm
+          if: ${{ (matrix.dub-arch == 'wasm32-unknown-unknown-webassembly') }}
+          uses: actions/upload-artifact@v2
+          with:
+              path: |
+                ${{ steps.init-asset-name.outputs.asset_base_name-wasm }}.zip
+
+        outputs:
+            asset_name-x86_64: ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}.tar.gz
+            asset_name-wasm: ${{ steps.init-asset-name.outputs.asset_base_name-wasm }}.zip
+
+    Create_release:
+        needs: [Windows, MacOS, Other_Platforms]
+        name: Create Release
+
+        runs-on: ubuntu-20.04
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');";
+
+        - name: Download All artifacts
+          uses: actions/download-artifact@v2
+
+        - run: |
+            ls './';
+
+        - run: |
+            ls './artifact';
+
+        - run: |
+            find './artifact' | grep -E ^\./artifact/ | xargs -I {}  mv {} ./;
+
+        - name: create SHA256SUMS
+          run: |
+            sha256sum ${{ needs.Windows.outputs.asset_name-x86 }} >> SHA256SUMS;
+            sha256sum ${{ needs.Windows.outputs.asset_name-x86_64 }} >> SHA256SUMS;
+            sha256sum ${{ needs.MacOS.outputs.asset_name-x86_64 }} >> SHA256SUMS;
+            sha256sum ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }} >> SHA256SUMS;
+            sha256sum ${{ needs.Other_Platforms.outputs.asset_name-wasm }} >> SHA256SUMS;
+
+        - name: create SHA512SUMS
+          run: |
+            sha512sum ${{ needs.Windows.outputs.asset_name-x86 }} >> SHA512SUMS;
+            sha512sum ${{ needs.Windows.outputs.asset_name-x86_64 }} >> SHA512SUMS;
+            sha512sum ${{ needs.MacOS.outputs.asset_name-x86_64 }} >> SHA512SUMS;
+            sha512sum ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }} >> SHA512SUMS;
+            sha512sum ${{ needs.Other_Platforms.outputs.asset_name-wasm }} >> SHA512SUMS;
+
+        - name: create SHA512SUMS
+          run: |
+            openssl sha3-256 ${{ needs.Windows.outputs.asset_name-x86 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Windows.outputs.asset_name-x86 }}' >> SHA3-256SUMS;
+            openssl sha3-256 ${{ needs.Windows.outputs.asset_name-x86_64 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Windows.outputs.asset_name-x86_64 }}' >> SHA3-256SUMS;
+            openssl sha3-256 ${{ needs.MacOS.outputs.asset_name-x86_64 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.MacOS.outputs.asset_name-x86_64 }}' >> SHA3-256SUMS;
+            openssl sha3-256 ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }}' >> SHA3-256SUMS;
+            openssl sha3-256 ${{ needs.Other_Platforms.outputs.asset_name-wasm }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Other_Platforms.outputs.asset_name-wasm }}' >> SHA3-256SUMS;
+
+        - name: create SHA3-512SUMS
+          run: |
+            openssl sha3-512 ${{ needs.Windows.outputs.asset_name-x86 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Windows.outputs.asset_name-x86 }}' >> SHA3-512SUMS;
+            openssl sha3-512 ${{ needs.Windows.outputs.asset_name-x86_64 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Windows.outputs.asset_name-x86_64 }}' >> SHA3-512SUMS;
+            openssl sha3-512 ${{ needs.MacOS.outputs.asset_name-x86_64 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.MacOS.outputs.asset_name-x86_64 }}' >> SHA3-512SUMS;
+            openssl sha3-512 ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }}' >> SHA3-512SUMS;
+            openssl sha3-512 ${{ needs.Other_Platforms.outputs.asset_name-wasm }} | grep -o -E [a-zA-Z0-9]+$ | xargs -I {} echo {} ' ${{ needs.Other_Platforms.outputs.asset_name-wasm }}' >> SHA3-512SUMS;
+
+        # If the tag name has dev in it, then prerelease
+        - name: is_prerelease
+          id: is_prerelease
+          run: |
+            if (echo ${{ github.ref }} | grep -o -E [^0-9][\r\n]*$ >/dev/null 2>&1); then        echo '::set-output name=is_prerelease::true';    else        echo '::set-output name=is_prerelease::false';    fi
+
+        - run: |
+            echo 'is_prerelease: '${{ steps.is_prerelease.outputs.is_prerelease }};
+
+        - name: Create Release
+          id: create_release
+          uses: actions/create-release@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              tag_name: ${{ github.ref }}
+              release_name: ${{ github.ref }}
+              draft: true
+              prerelease: ${{ steps.is_prerelease.outputs.is_prerelease }}
+
+        - name: Upload Windows x86 Release Asset
+          id: upload-windows-x86-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./${{ needs.Windows.outputs.asset_name-x86 }}
+              asset_name: ${{ needs.Windows.outputs.asset_name-x86 }}
+              asset_content_type: application/zip
+
+        - name: Upload Windows x86_64 Release Asset
+          id: upload-windows-x86_64-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./${{ needs.Windows.outputs.asset_name-x86_64 }}
+              asset_name: ${{ needs.Windows.outputs.asset_name-x86_64 }}
+              asset_content_type: application/zip
+
+        - name: Upload OSX x86_64 Release Asset
+          id: upload-osx-x86_64-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./${{ needs.MacOS.outputs.asset_name-x86_64 }}
+              asset_name: ${{ needs.MacOS.outputs.asset_name-x86_64 }}
+              asset_content_type: application/gzip
+
+        - name: Upload Linux-x86_64 Release Asset
+          id: upload-linux-x86_64-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./${{ needs.Other_Platforms.outputs.asset_name-x86_64 }}
+              asset_name: ${{ needs.Other_Platforms.outputs.asset_name-x86_64 }}
+              asset_content_type: application/gzip
+
+        - name: Upload wasm Release Asset
+          id: upload-wasm-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./${{ needs.Other_Platforms.outputs.asset_name-wasm }}
+              asset_name: ${{ needs.Other_Platforms.outputs.asset_name-wasm }}
+              asset_content_type: application/zip
+
+        - name: Upload SHA256 Release Asset
+          id: upload-sha256-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./SHA256SUMS
+              asset_name: SHA256SUMS
+              asset_content_type: text/plain
+
+        - name: Upload SHA512 Release Asset
+          id: upload-sha512-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./SHA512SUMS
+              asset_name: SHA512SUMS
+              asset_content_type: text/plain
+
+        - name: Upload SHA3-256 Release Asset
+          id: upload-sha3-256-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./SHA3-256SUMS
+              asset_name: SHA3-256SUMS
+              asset_content_type: text/plain
+
+        - name: Upload SHA3-512 Release Asset
+          id: upload-sha3-512-release-asset
+          uses: actions/upload-release-asset@v1
+          env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          with:
+              upload_url: ${{ steps.create_release.outputs.upload_url }}
+              asset_path: ./SHA3-512SUMS
+              asset_name: SHA3-512SUMS
+              asset_content_type: text/plain

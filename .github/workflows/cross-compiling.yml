@@ -1,0 +1,400 @@
+name: Cross-Compiling
+
+on:
+    push:
+        branches:
+        - master
+
+    workflow_dispatch:
+
+jobs:
+    Windows:
+        runs-on: windows-2016
+
+        strategy:
+            matrix:
+                dub-arch: [x86, x86_64]
+                build-type: [debug, unittest, release-nobounds]
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            $current_time = php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');";
+            echo $current_time;
+            echo "::set-output name=start-time::$current_time";
+
+        - name: set-asset_base_name
+          id: init-asset-name
+          run: |
+            $project_name = $env:GITHUB_REPOSITORY -replace "^[^/]+/", "";
+            echo "::set-output name=asset_base_name::$project_name-$env:GITHUB_SHA-windows-${{ matrix.dub-arch }}-${{ matrix.build-type }}";
+            echo "::set-output name=asset_base_name-x86::$project_name-$env:GITHUB_SHA-windows-x86-${{ matrix.build-type }}";
+            echo "::set-output name=asset_base_name-x86_64::$project_name-$env:GITHUB_SHA-windows-x86_64-${{ matrix.build-type }}";
+
+        - name: Init get-dlang
+          run: |
+            mkdir ~/get-dlang;
+            cd ~/get-dlang;
+            git init;
+            git remote add origin https://gitlab.com/dokutoku/get-dlang.git;
+            git config --local core.sparsecheckout true;
+            git config --local core.autocrlf false;
+
+        - name: Fetch get-dlang
+          run: |
+            cd ~/get-dlang;
+            echo '/dmd-version.txt' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt' >> .git/info/sparse-checkout;
+            echo '/template/powershell/install-dmd.ps1' >> .git/info/sparse-checkout;
+            echo '/template/powershell/install-ldc2.ps1' >> .git/info/sparse-checkout;
+            echo '/dmd-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/template/powershell/install-dmd.ps1.sig' >> .git/info/sparse-checkout;
+            echo '/template/powershell/install-ldc2.ps1.sig' >> .git/info/sparse-checkout;
+            git fetch --depth=1 origin master;
+
+        - name: Reset get-dlang
+          run: |
+            cd ~/get-dlang;
+            git reset --hard origin/master;
+
+        - name: log get-dlang
+          run: |
+            cd ~/get-dlang;
+            git log -1;
+
+        - name: Show get-dlang hashes
+          run: |
+            cd ~/get-dlang;
+            (Get-ChildItem -Recurse -File).FullName | ForEach-Object { openssl sha512 $_;}
+
+        - name: Verify get-dlang files
+          run: |
+            cd ~/get-dlang;
+            Write-Output "-----BEGIN PUBLIC KEY-----`nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Mgmj1IMcTe4ZD0nH5Hj`nHTHdcj2S9I8eIpSYl0DdPGzQcLN06eOX+n4MhOo886NQTfBATVAjyGZy500/8JT3`n7wk/we8yRcxAzW18GjUtqiLW8nvSK7tsqPAO8AWJNldYKwM3xTNo0hZW3G5xlkSw`n0ixMlHTffQ2JxPv4xDgBlKUAndzGIPHGhPiPnPbOOS5tOYaWLk3wtXERJpnv4chx`nCNgJc+uY2RTZWQDLCfjJAi4kce+8lkxaIHHSUrRRtjHdTTvPVCg9EWaX53u8MAFf`nf2S9+6+CdrvKe3+IOppI5cfFZtw4rLWqhrg5tVI7JLIVjx2ioZ5cvR6tzNKKGJcw`nD71vrqGWY6BuGRCaVOGAL/grmw3p4EPGPyxmDCsAsWztdWx9EyHNKtI8zfCFEWBx`noGDHjMYUEtF+acVJAhAb7dqgQ8RTebIuQipxlpSLC7BZMHm72SE2TqixIWLSsgAJ`n7NMv0PhReU+payF+3JsKgZRXkIaD/hgdh/Lz2Cr5iEOKAes1Rh2j6Wx9BYrY7Sbi`ncOfOXduCKQ04siLr1JGt8ZdsmCRhM7GavgtF+WsZav1kCHotVDsVJD1VOQOIdxMQ`n1i2AFC69JTIl395UtO4MaKxNO8lbTF9lefOjp80q+HailSbkJpOvrRBG1S3k5PmE`n3d9rSpiJtcLimKRfGrdYh68CAwEAAQ==`n-----END PUBLIC KEY-----" | Out-File public.pem -Encoding ascii;
+            (Get-ChildItem -Recurse -File -include *.ps1,*.sh,*.conf,*.yml,*.txt).FullName | ForEach-Object { openssl dgst -sha512 -verify public.pem -signature $_'.sig' $_; }
+
+        - name: Dlang versions
+          id: dlang-versions
+          run: |
+            cd ~/;
+            echo "::set-output name=dlang_versions::$(php -r "echo trim(file_get_contents('./get-dlang/dmd-version.txt')).'-'.trim(file_get_contents('./get-dlang/ldc2-version.txt'));")";
+
+        - name: installer-cache
+          uses: actions/cache@v2
+          with:
+              path: |
+                C:\cache
+
+              key: |
+                windows-dlang-${{ steps.dlang-versions.outputs.dlang_versions }}
+
+        - name: Install dmd
+          run: |
+            cd ~/;
+            Powershell -ExecutionPolicy Bypass -File get-dlang/template/powershell/install-dmd.ps1;
+
+        - name: Show dmd versions
+          run: |
+            C:\D\dmd2\windows\bin\dmd.exe --version
+            C:\D\dmd2\windows\bin\dub.exe --version
+
+        - name: Install ldc2
+          run: |
+            cd ~/;
+            Powershell -ExecutionPolicy Bypass -File get-dlang/template/powershell/install-ldc2.ps1;
+
+        - name: Show ldc2 versions
+          run: |
+            C:\ldc2\bin\ldc2.exe --version
+            C:\ldc2\bin\dub.exe --version
+
+        - name: checkout
+          uses: actions/checkout@v2
+
+        - name: x86 create .bat
+          if: ${{ (matrix.dub-arch == 'x86') || (matrix.dub-arch == 'x86_mscoff') }}
+          shell: cmd
+          run: |
+            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars32.bat" > vc_init.bat
+
+        - name: x64 create .bat
+          if: ${{ (matrix.dub-arch != 'x86') && (matrix.dub-arch != 'x86_mscoff') }}
+          shell: cmd
+          run: |
+            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat" > vc_init.bat
+
+        - name: dmd x86 build
+          if: ${{ (matrix.dub-arch == 'x86') || (matrix.dub-arch == 'x86_mscoff') }}
+          shell: cmd
+          run: |
+            call vc_init.bat && C:\D\dmd2\windows\bin\dub.exe build --force --combined --arch=x86_mscoff --build=${{ matrix.build-type }} --compiler=C:\D\dmd2\windows\bin\dmd.exe
+
+        - name: dmd build
+          if: ${{ (matrix.dub-arch != 'x86') && (matrix.dub-arch != 'x86_mscoff') }}
+          shell: cmd
+          run: |
+            call vc_init.bat && C:\D\dmd2\windows\bin\dub.exe build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=C:\D\dmd2\windows\bin\dmd.exe
+
+        - name: ldc2 build
+          shell: cmd
+          run: |
+            call vc_init.bat && C:\ldc2\bin\dub.exe build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=C:\ldc2\bin\ldc2.exe
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v2
+          with:
+              name: ${{ steps.init-asset-name.outputs.asset_base_name }}
+              path: |
+                include
+                lib
+
+    MacOS:
+        runs-on: macos-10.15
+
+        strategy:
+            matrix:
+                build-type: [debug, unittest, release-nobounds]
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            current_time=`php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');"`;
+            echo $current_time;
+            echo "::set-output name=start-time::$current_time";
+
+        - name: set-asset_base_name
+          id: init-asset-name
+          run: |
+            echo "::set-output name=asset_base_name::${GITHUB_REPOSITORY#*/}-${GITHUB_SHA}-osx-x86_64-${{ matrix.build-type }}";
+            echo "::set-output name=asset_base_name-x86_64::${GITHUB_REPOSITORY#*/}-${GITHUB_SHA}-osx-x86_64-${{ matrix.build-type }}";
+
+        - name: Init get-dlang
+          run: |
+            mkdir ~/get-dlang;
+            cd ~/get-dlang;
+            git init;
+            git remote add origin https://gitlab.com/dokutoku/get-dlang.git;
+            git config --local core.sparsecheckout true;
+            git config --local core.autocrlf false;
+
+        - name: Fetch get-dlang
+          run: |
+            cd ~/get-dlang;
+            echo '/dmd-version.txt' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt' >> .git/info/sparse-checkout;
+            echo '/template/shell/install-dmd/install-dmd-osx-x86_64.sh' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-osx-x86_64.sh' >> .git/info/sparse-checkout;
+            echo '/dmd-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/template/shell/install-dmd/install-dmd-osx-x86_64.sh.sig' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-osx-x86_64.sh.sig' >> .git/info/sparse-checkout;
+            git fetch --depth=1 origin master;
+
+        - name: Reset get-dlang
+          run: |
+            cd ~/get-dlang;
+            git reset --hard origin/master;
+
+        - name: log get-dlang
+          run: |
+            cd ~/get-dlang;
+            git log -1;
+
+        - name: Show get-dlang hashes
+          run: |
+            cd ~/get-dlang;
+            find './' -type f | grep --regexp=^\.//\.git/ --invert-match | xargs openssl sha512;
+
+        - name: Verify get-dlang files
+          run: |
+            cd ~/get-dlang;
+            echo -e "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Mgmj1IMcTe4ZD0nH5Hj\nHTHdcj2S9I8eIpSYl0DdPGzQcLN06eOX+n4MhOo886NQTfBATVAjyGZy500/8JT3\n7wk/we8yRcxAzW18GjUtqiLW8nvSK7tsqPAO8AWJNldYKwM3xTNo0hZW3G5xlkSw\n0ixMlHTffQ2JxPv4xDgBlKUAndzGIPHGhPiPnPbOOS5tOYaWLk3wtXERJpnv4chx\nCNgJc+uY2RTZWQDLCfjJAi4kce+8lkxaIHHSUrRRtjHdTTvPVCg9EWaX53u8MAFf\nf2S9+6+CdrvKe3+IOppI5cfFZtw4rLWqhrg5tVI7JLIVjx2ioZ5cvR6tzNKKGJcw\nD71vrqGWY6BuGRCaVOGAL/grmw3p4EPGPyxmDCsAsWztdWx9EyHNKtI8zfCFEWBx\noGDHjMYUEtF+acVJAhAb7dqgQ8RTebIuQipxlpSLC7BZMHm72SE2TqixIWLSsgAJ\n7NMv0PhReU+payF+3JsKgZRXkIaD/hgdh/Lz2Cr5iEOKAes1Rh2j6Wx9BYrY7Sbi\ncOfOXduCKQ04siLr1JGt8ZdsmCRhM7GavgtF+WsZav1kCHotVDsVJD1VOQOIdxMQ\n1i2AFC69JTIl395UtO4MaKxNO8lbTF9lefOjp80q+HailSbkJpOvrRBG1S3k5PmE\n3d9rSpiJtcLimKRfGrdYh68CAwEAAQ==\n-----END PUBLIC KEY-----" > public.pem;
+            find './' -type f | grep -E "\.(ps1|sh|conf|yml|txt)$" | xargs -I {} openssl dgst -sha512 -verify public.pem -signature {}.sig {};
+
+        - name: Dlang versions
+          id: dlang-versions
+          run: |
+            cd ~/;
+            echo "::set-output name=dlang_versions::$(php -r "echo trim(file_get_contents('./get-dlang/dmd-version.txt')).'-'.trim(file_get_contents('./get-dlang/ldc2-version.txt'));")";
+
+        - name: installer-cache
+          uses: actions/cache@v2
+          with:
+              path: |
+                ~/cache
+
+              key: |
+                osx-dlang-${{ steps.dlang-versions.outputs.dlang_versions }}
+
+        - name: Install dmd
+          run: |
+            cd ~/;
+            sh ~/get-dlang/template/shell/install-dmd/install-dmd-osx-x86_64.sh;
+
+        - name: Show dmd version
+          run: |
+            dmd --version;
+            dub --version;
+
+        - name: Download ldc2
+          run: |
+            cd ~/;
+            sh ~/get-dlang/template/shell/get-ldc2/get-ldc2-osx-x86_64.sh;
+
+        - name: Show ldc2 version
+          run: |
+            /Users/runner/ldc2/bin/ldc2 --version;
+            /Users/runner/ldc2/bin/dub --version;
+
+        - name: checkout
+          uses: actions/checkout@v2
+
+        - name: dmd build
+          run: |
+            dub build --force --combined --build=${{ matrix.build-type }};
+
+        - name: ldc2 build
+          run: |
+            /Users/runner/ldc2/bin/dub build --force --combined --arch=x86_64 --build=${{ matrix.build-type }} --compiler=/Users/runner/ldc2/bin/ldc2;
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v2
+          with:
+              name: ${{ steps.init-asset-name.outputs.asset_base_name }}
+              path: |
+                include
+                lib
+
+    Other_Platforms:
+        runs-on: ubuntu-20.04
+
+        strategy:
+            matrix:
+                dub-arch: [x86_64]
+                build-type: [debug, unittest, release-nobounds]
+
+        steps:
+        - name: Start Time
+          id: start-time
+          run: |
+            current_time=`php -r "echo (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:sP');"`;
+            echo $current_time;
+            echo "::set-output name=start-time::$current_time";
+
+        - name: set-asset_base_name
+          id: init-asset-name
+          run: |
+            echo "::set-output name=asset_base_name-x86_64::${GITHUB_REPOSITORY#*/}-${GITHUB_SHA}-linux-x86_64-${{ matrix.build-type }}";
+            echo "::set-output name=asset_base_name-wasm::${GITHUB_REPOSITORY#*/}-${GITHUB_SHA}-wasm-${{ matrix.build-type }}";
+
+        - name: Init get-dlang
+          run: |
+            mkdir ~/get-dlang;
+            cd ~/get-dlang;
+            git init;
+            git remote add origin https://gitlab.com/dokutoku/get-dlang.git;
+            git config --local core.sparsecheckout true;
+            git config --local core.autocrlf false;
+
+        - name: Init sparse-checkout
+          run: |
+            cd ~/get-dlang;
+            echo '/dmd-version.txt' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt' >> .git/info/sparse-checkout;
+            echo '/template/ldc2-conf/ldc2-linux-x86_64.conf' >> .git/info/sparse-checkout;
+            echo '/template/shell/install-dmd/install-dmd-ubuntu-x86_64.sh' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-linux-x86_64.sh' >> .git/info/sparse-checkout;
+            echo '/dmd-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/ldc2-version.txt.sig' >> .git/info/sparse-checkout;
+            echo '/template/ldc2-conf/ldc2-linux-x86_64.conf.sig' >> .git/info/sparse-checkout;
+            echo '/template/shell/install-dmd/install-dmd-ubuntu-x86_64.sh.sig' >> .git/info/sparse-checkout;
+            echo '/template/shell/get-ldc2/get-ldc2-linux-x86_64.sh.sig' >> .git/info/sparse-checkout;
+
+        - name: Fetch get-dlang
+          run: |
+            cd ~/get-dlang;
+            git fetch --depth=1 origin master;
+
+        - name: Reset get-dlang
+          run: |
+            cd ~/get-dlang;
+            git reset --hard origin/master;
+
+        - name: log get-dlang
+          run: |
+            cd ~/get-dlang;
+            git log -1;
+
+        - name: Show get-dlang hashes
+          run: |
+            cd ~/get-dlang;
+            find './' -type f | grep --regexp=^\./\.git/ --invert-match | xargs sha512sum;
+
+        - name: Verify get-dlang files
+          run: |
+            cd ~/get-dlang;
+            echo -e "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Mgmj1IMcTe4ZD0nH5Hj\nHTHdcj2S9I8eIpSYl0DdPGzQcLN06eOX+n4MhOo886NQTfBATVAjyGZy500/8JT3\n7wk/we8yRcxAzW18GjUtqiLW8nvSK7tsqPAO8AWJNldYKwM3xTNo0hZW3G5xlkSw\n0ixMlHTffQ2JxPv4xDgBlKUAndzGIPHGhPiPnPbOOS5tOYaWLk3wtXERJpnv4chx\nCNgJc+uY2RTZWQDLCfjJAi4kce+8lkxaIHHSUrRRtjHdTTvPVCg9EWaX53u8MAFf\nf2S9+6+CdrvKe3+IOppI5cfFZtw4rLWqhrg5tVI7JLIVjx2ioZ5cvR6tzNKKGJcw\nD71vrqGWY6BuGRCaVOGAL/grmw3p4EPGPyxmDCsAsWztdWx9EyHNKtI8zfCFEWBx\noGDHjMYUEtF+acVJAhAb7dqgQ8RTebIuQipxlpSLC7BZMHm72SE2TqixIWLSsgAJ\n7NMv0PhReU+payF+3JsKgZRXkIaD/hgdh/Lz2Cr5iEOKAes1Rh2j6Wx9BYrY7Sbi\ncOfOXduCKQ04siLr1JGt8ZdsmCRhM7GavgtF+WsZav1kCHotVDsVJD1VOQOIdxMQ\n1i2AFC69JTIl395UtO4MaKxNO8lbTF9lefOjp80q+HailSbkJpOvrRBG1S3k5PmE\n3d9rSpiJtcLimKRfGrdYh68CAwEAAQ==\n-----END PUBLIC KEY-----" > public.pem;
+            find './' -type f | grep -E "\.(ps1|sh|conf|yml|txt)$" | xargs -I {} openssl dgst -sha512 -verify public.pem -signature {}.sig {};
+
+        - name: Dlang versions
+          id: dlang-versions
+          run: |
+            cd ~/;
+            echo "::set-output name=dlang_versions::$(php -r "echo trim(file_get_contents('./get-dlang/dmd-version.txt')).'-'.trim(file_get_contents('./get-dlang/ldc2-version.txt'));")";
+
+        - name: installer-cache
+          uses: actions/cache@v2
+          with:
+              path: |
+                ~/cache
+
+              key: |
+                other-platforms-dlang-${{ steps.dlang-versions.outputs.dlang_versions }}
+
+        - name: Install dmd
+          run: |
+            cd ~/;
+            sh ~/get-dlang/template/shell/install-dmd/install-dmd-ubuntu-x86_64.sh;
+
+        - name: Show dmd version
+          run: |
+            dmd --version;
+            dub --version;
+
+        - name: Download ldc2
+          run: |
+            cd ~/;
+            sh ~/get-dlang/template/shell/get-ldc2/get-ldc2-linux-x86_64.sh;
+
+        - name: copy ldc2.conf
+          run: |
+            cp ~/get-dlang/template/ldc2-conf/ldc2-linux-x86_64.conf ~/ldc2/etc/ldc2.conf;
+
+        - name: Show ldc2 version
+          run: |
+            /home/runner/ldc2/bin/ldc2 --version;
+            /home/runner/ldc2/bin/dub --version;
+
+        - name: checkout
+          uses: actions/checkout@v2
+
+        - name: dmd build
+          run: |
+            dub build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }};
+
+        - name: ldc2 build
+          run: |
+            /home/runner/ldc2/bin/dub build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=/home/runner/ldc2/bin/ldc2;
+            /home/runner/ldc2/bin/dub build --force --combined --arch=wasm32-unknown-unknown-webassembly --build=${{ matrix.build-type }} --compiler=/home/runner/ldc2/bin/ldc2;
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v2
+          with:
+              name: ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}
+              path: |
+                include
+                lib
+                wasm

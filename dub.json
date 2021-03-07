@@ -1,0 +1,40 @@
+{
+	"name": "wcwidth-compat",
+	"description": "wcwidth written in pure D.",
+	"authors": ["dokutoku"],
+	"copyright": "Copyright © 2021, dokutoku",
+	"homepage": "https://gitlab.com/dokutoku/wcwidth-compat",
+	"license": "MIT",
+	"buildTypes":
+	{
+		"debug": {"buildOptions": ["betterC", "debugMode", "debugInfo"]},
+		"release": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline"]},
+		"release-debug": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline", "debugInfo"]},
+		"release-nobounds": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline", "noBoundsCheck"]},
+		"unittest": {"buildOptions": ["betterC", "unittests", "debugMode", "debugInfo"]},
+		"profile": {"buildOptions": ["betterC", "profile", "optimize", "inline", "debugInfo"]},
+		"profile-gc": {"buildOptions": ["betterC", "profileGC", "debugInfo"]},
+		"cov": {"buildOptions": ["betterC", "coverage", "debugMode"]},
+		"unittest-cov": {"buildOptions": ["betterC", "unittests", "coverage", "debugMode", "debugInfo"]},
+		"syntax": {"buildOptions": ["betterC", "syntaxOnly"]}
+	},
+	"configurations":
+	[
+		{
+			"name": "wasm32",
+			"platforms": ["wasm"],
+			"versions": ["WCWIDTH_WASM"],
+			"targetType": "executable",
+			"targetPath": "wasm"
+		},
+		{
+			"name": "betterC-library",
+			"targetType": "library",
+			"targetPath": "lib"
+		},
+		{
+			"name": "source",
+			"targetType": "sourceLibrary"
+		}
+	]
+}
