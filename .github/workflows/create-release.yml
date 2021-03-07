@@ -450,9 +450,6 @@ jobs:
           run: |
             if (echo ${{ github.ref }} | grep -o -E [^0-9][\r\n]*$ >/dev/null 2>&1); then        echo '::set-output name=is_prerelease::true';    else        echo '::set-output name=is_prerelease::false';    fi
 
-        - run: |
-            echo 'is_prerelease: '${{ steps.is_prerelease.outputs.is_prerelease }};
-
         - name: Create Release
           id: create_release
           uses: actions/create-release@v1
