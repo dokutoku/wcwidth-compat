@@ -232,7 +232,6 @@ jobs:
         - name: Create OSX archive
           run: |
             mkdir ${{ steps.init-asset-name.outputs.asset_base_name }};
-            mkdir ${{ steps.init-asset-name.outputs.asset_base_name }}/bin;
             mkdir ${{ steps.init-asset-name.outputs.asset_base_name }}/include;
             mkdir ${{ steps.init-asset-name.outputs.asset_base_name }}/lib;
             cp -r ./include/* '${{ steps.init-asset-name.outputs.asset_base_name }}/include/';
@@ -353,7 +352,6 @@ jobs:
           if: ${{ (matrix.dub-arch == 'x86_64') }}
           run: |
             mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }};
-            mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/bin;
             mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/include;
             mkdir ${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/lib;
             cp -r ./include/* '${{ steps.init-asset-name.outputs.asset_base_name-x86_64 }}/include/';
