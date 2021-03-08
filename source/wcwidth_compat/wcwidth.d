@@ -1389,7 +1389,7 @@ private bool intable(immutable ref .width_interval[] table, size_t table_length,
 ///
 extern (C)
 pure nothrow @safe @nogc @live
-public int wcwidth_compat(uint ucs)
+public int wcwidth(uint ucs)
 
 	out(result)
 	{
@@ -1423,25 +1423,25 @@ public int wcwidth_compat(uint ucs)
 
 unittest
 {
-	assert(.wcwidth_compat(cast(uint)('a')) == 1);
-	assert(.wcwidth_compat(cast(uint)('ö')) == 1);
+	assert(.wcwidth(cast(uint)('a')) == 1);
+	assert(.wcwidth(cast(uint)('ö')) == 1);
 
 	// Some wide:
-	assert(.wcwidth_compat(cast(uint)('Ａ')) == 2);
-	assert(.wcwidth_compat(cast(uint)('Ｂ')) == 2);
-	assert(.wcwidth_compat(cast(uint)('Ｃ')) == 2);
-	assert(.wcwidth_compat(cast(uint)('中')) == 2);
-	assert(.wcwidth_compat(cast(uint)('文')) == 2);
-	assert(.wcwidth_compat(cast(uint)(0x679C)) == 2);
-	assert(.wcwidth_compat(cast(uint)(0x679D)) == 2);
-	assert(.wcwidth_compat(cast(uint)(0x02070E)) == 2);
-	assert(.wcwidth_compat(cast(uint)(0x020731)) == 2);
+	assert(.wcwidth(cast(uint)('Ａ')) == 2);
+	assert(.wcwidth(cast(uint)('Ｂ')) == 2);
+	assert(.wcwidth(cast(uint)('Ｃ')) == 2);
+	assert(.wcwidth(cast(uint)('中')) == 2);
+	assert(.wcwidth(cast(uint)('文')) == 2);
+	assert(.wcwidth(cast(uint)(0x679C)) == 2);
+	assert(.wcwidth(cast(uint)(0x679D)) == 2);
+	assert(.wcwidth(cast(uint)(0x02070E)) == 2);
+	assert(.wcwidth(cast(uint)(0x020731)) == 2);
 
-	assert(.wcwidth_compat(cast(uint)(0x11A3)) == 1);
+	assert(.wcwidth(cast(uint)(0x11A3)) == 1);
 
 	// Koala emoji.
-	assert(.wcwidth_compat(cast(uint)(0x01F428)) == 2);
+	assert(.wcwidth(cast(uint)(0x01F428)) == 2);
 
 	// Watch emoji.
-	assert(.wcwidth_compat(cast(uint)(0x231A)) == 2);
+	assert(.wcwidth(cast(uint)(0x231A)) == 2);
 }

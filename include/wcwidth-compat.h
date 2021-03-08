@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-int32_t wcwidth_compat(uint32_t ucs);
+int32_t wcwidth(uint32_t ucs);
 
 #ifdef __cplusplus
 }

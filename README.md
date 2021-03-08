@@ -13,7 +13,7 @@ It is very simple to use.
 ```d
 import wcwidth_compat;
 
-assert(wcwidth_compat(cast(uint)('Ａ') == 2);
+assert(wcwidth(cast(uint)('Ａ') == 2);
 ```
 
 ### wasm
@@ -33,7 +33,7 @@ let bytes = new Uint8Array(fs.readFileSync('./wcwidth-compat.wasm'));
 let instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
 
 let input = 'Ａ';
-console.log(instance.exports.wcwidth_compat(input.codePointAt(0)));
+console.log(instance.exports.wcwidth(input.codePointAt(0)));
 ```
 
 ## Related project
