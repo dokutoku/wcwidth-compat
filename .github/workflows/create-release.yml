@@ -114,7 +114,7 @@ jobs:
         - name: ldc2 build
           shell: cmd
           run: |
-            call vc_init.bat && C:\ldc2\bin\dub.exe build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=C:\ldc2\bin\ldc2.exe
+            call vc_init.bat && C:\ldc2\bin\dub.exe build --force --combined --build-mode=allAtOnce --config=betterC-library --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=C:\ldc2\bin\ldc2.exe
 
         - name: Create Windows archive
           run: |
@@ -227,7 +227,7 @@ jobs:
 
         - name: ldc2 build
           run: |
-            /Users/runner/ldc2/bin/dub build --force --combined --arch=x86_64 --build=${{ matrix.build-type }} --compiler=/Users/runner/ldc2/bin/ldc2;
+            /Users/runner/ldc2/bin/dub build --force --combined --build-mode=allAtOnce --config=betterC-library --arch=x86_64 --build=${{ matrix.build-type }} --compiler=/Users/runner/ldc2/bin/ldc2;
 
         - name: Create OSX archive
           run: |
@@ -344,9 +344,15 @@ jobs:
         - name: checkout
           uses: actions/checkout@v2
 
-        - name: ldc2 build
+        - name: ldc2 betterC-library build
+          if: ${{ (matrix.dub-arch != 'wasm32-unknown-unknown-webassembly') }}
           run: |
-            /home/runner/ldc2/bin/dub build --force --combined --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=/home/runner/ldc2/bin/ldc2;
+            /home/runner/ldc2/bin/dub build --force --combined --build-mode=allAtOnce --config=betterC-library --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=/home/runner/ldc2/bin/ldc2;
+
+        - name: ldc2 wasm32 build
+          if: ${{ (matrix.dub-arch == 'wasm32-unknown-unknown-webassembly') }}
+          run: |
+            /home/runner/ldc2/bin/dub build --force --combined --build-mode=allAtOnce --config=wasm32 --arch=${{ matrix.dub-arch }} --build=${{ matrix.build-type }} --compiler=/home/runner/ldc2/bin/ldc2;
 
         - name: Create Linux x86_64 archive
           if: ${{ (matrix.dub-arch == 'x86_64') }}
