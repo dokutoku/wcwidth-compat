@@ -12,20 +12,7 @@
 			"platforms": ["wasm"],
 			"versions": ["WCWIDTH_WASM"],
 			"targetType": "executable",
-			"targetPath": "wasm",
-			"buildTypes":
-			{
-				"debug": {"buildOptions": ["betterC", "debugMode", "debugInfo"]},
-				"release": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline"]},
-				"release-debug": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline", "debugInfo"]},
-				"release-nobounds": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline", "noBoundsCheck"]},
-				"unittest": {"buildOptions": ["betterC", "unittests", "debugMode", "debugInfo"]},
-				"profile": {"buildOptions": ["betterC", "profile", "optimize", "inline", "debugInfo"]},
-				"profile-gc": {"buildOptions": ["betterC", "profileGC", "debugInfo"]},
-				"cov": {"buildOptions": ["betterC", "coverage", "debugMode"]},
-				"unittest-cov": {"buildOptions": ["betterC", "unittests", "coverage", "debugMode", "debugInfo"]},
-				"syntax": {"buildOptions": ["betterC", "syntaxOnly"]}
-			}
+			"targetPath": "wasm"
 		},
 		{
 			"name": "library",
@@ -35,20 +22,7 @@
 		{
 			"name": "betterC-library",
 			"targetType": "library",
-			"targetPath": "lib",
-			"buildTypes":
-			{
-				"debug": {"buildOptions": ["betterC", "debugMode", "debugInfo"]},
-				"release": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline"]},
-				"release-debug": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline", "debugInfo"]},
-				"release-nobounds": {"buildOptions": ["betterC", "releaseMode", "optimize", "inline", "noBoundsCheck"]},
-				"unittest": {"buildOptions": ["betterC", "unittests", "debugMode", "debugInfo"]},
-				"profile": {"buildOptions": ["betterC", "profile", "optimize", "inline", "debugInfo"]},
-				"profile-gc": {"buildOptions": ["betterC", "profileGC", "debugInfo"]},
-				"cov": {"buildOptions": ["betterC", "coverage", "debugMode"]},
-				"unittest-cov": {"buildOptions": ["betterC", "unittests", "coverage", "debugMode", "debugInfo"]},
-				"syntax": {"buildOptions": ["betterC", "syntaxOnly"]}
-			}
+			"targetPath": "lib"
 		},
 		{
 			"name": "source",
