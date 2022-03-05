@@ -9,7 +9,7 @@ on:
 
 jobs:
     Windows:
-        runs-on: windows-2016
+        runs-on: windows-2019
 
         strategy:
             matrix:
@@ -117,13 +117,13 @@ jobs:
           if: ${{ (matrix.dub-arch == 'x86') || (matrix.dub-arch == 'x86_mscoff') }}
           shell: cmd
           run: |
-            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars32.bat" > vc_init.bat
+            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars32.bat" > vc_init.bat
 
         - name: x64 create .bat
           if: ${{ (matrix.dub-arch != 'x86') && (matrix.dub-arch != 'x86_mscoff') }}
           shell: cmd
           run: |
-            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat" > vc_init.bat
+            echo call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat" > vc_init.bat
 
         - name: dmd x86 build
           if: ${{ (matrix.dub-arch == 'x86') || (matrix.dub-arch == 'x86_mscoff') }}
